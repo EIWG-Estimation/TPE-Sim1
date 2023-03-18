@@ -1,7 +1,7 @@
 # --------------------------------------------------------------
 #  Date    : 18-03-23
-#  Authors : Thomas Drury
-#  History : Original code by Tobias Muetze (simulate_data.R)
+#  Authors : Thomas Drury (original Tobias Muetze)
+#  History : Original code simulate_data.R
 #  Purpose : Code creates DAR_DROP scenario DGM 
 #       
 # --------------------------------------------------------------
@@ -17,19 +17,18 @@
 # 1. Source R code and load libraries 
 # --------------------------------------------------------------
 
-setwd("C:\Users\tad66240\GSK\TD Statistics Work - statistics\collaboration\eig-estimation\git-repositories\TPE-Sim1\code")
+setwd("C:/Users/tad66240/GSK/TD Statistics Work - statistics/collaboration/eig-estimation/git-repositories/TPE-Sim1/")
 rm(list = ls())
 
 set.seed(12345)
+library(haven)
 library(tidyverse)
-
-offtrt_behaviour <- "drop"
 
 r_func_vec <- c("add_discontinuation", "add_missingness", 
                 "add_response_offtrt", "simulate_ontrt_data")
 
 for(i in seq_along(r_func_vec)) {
-  source(paste0("R_functions/", r_func_vec[i], ".R"))
+  source(paste0("code/functions/", r_func_vec[i], ".R"))
 }
 
 # ---------------------------------------------------------------
@@ -37,7 +36,7 @@ for(i in seq_along(r_func_vec)) {
 # ---------------------------------------------------------------
 
 # Simulatins and number of subjects 
-n_sim   = 1000
+n_sim   = 100
 n_ctl   = 200
 n_trt   = 200
 
@@ -98,19 +97,6 @@ beta_discont_dar = data.frame(group = rep(c("ctl", "trt"), each = 5),
                               stringsAsFactors = FALSE)
 
 
-# Beta parameter for logistic regression modeling of DNAR trt discont
-beta_discont_dnar = data.frame(group = rep(c("ctl", "trt"), each = 5),
-                               visitn = rep(1:5, times = 2),
-                               beta_main = rep(-21, times = 10),
-                               beta_prev_resp = c(1.42, 1.14, 1.33, 1.51, 1.46, 
-                                                  1.42, 1.14, 1.47, 1.48, 1.40), 
-                               beta_current_resp = c(0.69, 0.69, 0.69, 0.72, 0.72, 
-                                                     0.72, 0.75, 0.77, 0.77, 0.76),
-                               beta_baseline = c(0, 0.3, 0.1, 0.05, 0, 
-                                                 0, 0.3, 0.1, 0.05, 0), 
-                               stringsAsFactors = FALSE)
-
-
 # ---------------------------------------------------------------
 # 3. Simulate on-trt data
 # ---------------------------------------------------------------
@@ -131,50 +117,16 @@ df_data_ontrt = simulate_ontrt_data(mu_trt = mu_trt,
 
 # Add treatment discontinuation indicator data data frames
 df_data_offtrt_dar  = add_discontinuation(data = df_data_ontrt, beta_discont = beta_discont_dar)
-df_data_offtrt_dnar = add_discontinuation(data = df_data_ontrt, beta_discont = beta_discont_dnar)
 rm("df_data_ontrt")
 
 
-# Immediate change of treatment effect
-if (offtrt_behaviour == "drop") {
-  df_data_offtrt_dar <- df_data_offtrt_dar %>% 
-    ungroup %>%
-    mutate(response_offtrt = case_when(ontrt == 1 ~ response_ontrt,
-                                       ontrt == 0 & group == "ctl" ~ response_ontrt - 0.6,
-                                       ontrt == 0 & group == "trt" ~ response_ontrt - 0.2))
+# Drop scenario means immediate change of treatment effect
+df_data_offtrt_dar <- df_data_offtrt_dar %>% 
+  ungroup %>%
+  mutate(response_offtrt = case_when(ontrt == 1 ~ response_ontrt,
+                                     ontrt == 0 & group == "ctl" ~ response_ontrt - 0.6,
+                                     ontrt == 0 & group == "trt" ~ response_ontrt - 0.2))
   
-  df_data_offtrt_dnar <- df_data_offtrt_dnar %>% 
-    ungroup %>%
-    mutate(response_offtrt = case_when(ontrt == 1 ~ response_ontrt,
-                                       ontrt == 0 & group == "ctl" ~ response_ontrt - 0.6,
-                                       ontrt == 0 & group == "trt" ~ response_ontrt - 0.2))
-}
-
-
-# Linear change of treatment effect
-if (offtrt_behaviour == "linearchg") {
-  # Add off-treatment data for DAR data set
-  df_data_offtrt_dar <- df_data_offtrt_dar %>%
-    group_by(sim_run, subjid) %>%
-    mutate(count_offtrt_visits = cumsum(ontrt == 0)) %>%
-    ungroup %>%
-    mutate(factor_effect_loss = pmin(count_offtrt_visits, 3) / 3,
-           response_offtrt = case_when(ontrt == 1 ~ response_ontrt,
-                                       ontrt == 0 & group == "ctl" ~ response_ontrt - factor_effect_loss * 0.8,
-                                       ontrt == 0 & group == "trt" ~ response_ontrt - factor_effect_loss * 0.25)) %>%
-    select(-count_offtrt_visits, -factor_effect_loss)
-  # Add off-treatment data for DAR data set  
-  df_data_offtrt_dnar <- df_data_offtrt_dnar %>%
-    group_by(sim_run, subjid) %>%
-    mutate(count_offtrt_visits = cumsum(ontrt == 0)) %>%
-    ungroup %>%
-    mutate(factor_effect_loss = pmin(count_offtrt_visits, 3) / 3,
-           response_offtrt = case_when(ontrt == 1 ~ response_ontrt,
-                                       ontrt == 0 & group == "ctl" ~ response_ontrt - factor_effect_loss * 0.8,
-                                       ontrt == 0 & group == "trt" ~ response_ontrt - factor_effect_loss * 0.25)) %>%
-    select(-count_offtrt_visits, -factor_effect_loss)
-}
-
 
 # ---------------------------------------------------------------
 # 5. Simulate missingness
@@ -183,8 +135,8 @@ if (offtrt_behaviour == "linearchg") {
 p_miss_vec = seq(0.1, 0.6, by = 0.1)
 
 for(i in seq_along(p_miss_vec)) {
-  p_miss <- p_miss_vec[i]
   
+  p_miss <- p_miss_vec[i]
   theta <- data.frame(group = c("ctl", "trt"),
                       theta1 = c(log(p_miss/(1-p_miss)), log(p_miss/(1-p_miss))),
                       theta2 = c(0, 0), 
@@ -192,20 +144,79 @@ for(i in seq_along(p_miss_vec)) {
   
   # Simulate missingness for DAR and save data
   df_final_dar <- add_missingness(data = df_data_offtrt_dar, theta = theta)
-  file_name <- paste0("/data/dar_",
-                      offtrt_behaviour, "_p",
+  file_name <- paste0("data/dar_drop", "_p",
                       str_replace(string = as.character(p_miss), pattern = "\\.", replacement = ""),
-                      ".csv")
-  write_csv(df_final_dar, file = file_name)
+                      ".sas7bdat")
+  write_sas(df_final_dar, path = file_name)
   rm("df_final_dar")
-   
-  # # Simulate missingness for DNAR and save data
-  # df_final_dnar <- add_missingness(data = df_data_offtrt_dnar, theta = theta)
-  # file_name <- paste0("/data/dnar_",
-  #                     offtrt_behaviour, "_p",
-  #                     str_replace(string = as.character(p_miss), pattern = "\\.", replacement = ""),
-  #                     ".csv")
-  # write_csv(df_final_dnar, file = file_name)
-  # rm("df_final_dnar")
+  
 }
+
+
+
+
+# # Beta parameter for logistic regression modeling of DNAR trt discont
+# beta_discont_dnar = data.frame(group = rep(c("ctl", "trt"), each = 5),
+#                                visitn = rep(1:5, times = 2),
+#                                beta_main = rep(-21, times = 10),
+#                                beta_prev_resp = c(1.42, 1.14, 1.33, 1.51, 1.46, 
+#                                                   1.42, 1.14, 1.47, 1.48, 1.40), 
+#                                beta_current_resp = c(0.69, 0.69, 0.69, 0.72, 0.72, 
+#                                                      0.72, 0.75, 0.77, 0.77, 0.76),
+#                                beta_baseline = c(0, 0.3, 0.1, 0.05, 0, 
+#                                                  0, 0.3, 0.1, 0.05, 0), 
+#                                stringsAsFactors = FALSE)
+
+
+# df_data_offtrt_dnar = add_discontinuation(data = df_data_ontrt, beta_discont = beta_discont_dnar)
+
+
+
+# 
+# df_data_offtrt_dnar <- df_data_offtrt_dnar %>% 
+#   ungroup %>%
+#   mutate(response_offtrt = case_when(ontrt == 1 ~ response_ontrt,
+#                                      ontrt == 0 & group == "ctl" ~ response_ontrt - 0.6,
+#                                      ontrt == 0 & group == "trt" ~ response_ontrt - 0.2))
+
+
+# # Simulate missingness for DNAR and save data
+# df_final_dnar <- add_missingness(data = df_data_offtrt_dnar, theta = theta)
+# file_name <- paste0("/data/dnar_",
+#                     offtrt_behaviour, "_p",
+#                     str_replace(string = as.character(p_miss), pattern = "\\.", replacement = ""),
+#                     ".csv")
+# write_csv(df_final_dnar, file = file_name)
+# rm("df_final_dnar")
+
+
+# # Linear change of treatment effect
+# if (offtrt_behaviour == "linearchg") {
+#   # Add off-treatment data for DAR data set
+#   df_data_offtrt_dar <- df_data_offtrt_dar %>%
+#     group_by(sim_run, subjid) %>%
+#     mutate(count_offtrt_visits = cumsum(ontrt == 0)) %>%
+#     ungroup %>%
+#     mutate(factor_effect_loss = pmin(count_offtrt_visits, 3) / 3,
+#            response_offtrt = case_when(ontrt == 1 ~ response_ontrt,
+#                                        ontrt == 0 & group == "ctl" ~ response_ontrt - factor_effect_loss * 0.8,
+#                                        ontrt == 0 & group == "trt" ~ response_ontrt - factor_effect_loss * 0.25)) %>%
+#     select(-count_offtrt_visits, -factor_effect_loss)
+#   # Add off-treatment data for DAR data set  
+#   df_data_offtrt_dnar <- df_data_offtrt_dnar %>%
+#     group_by(sim_run, subjid) %>%
+#     mutate(count_offtrt_visits = cumsum(ontrt == 0)) %>%
+#     ungroup %>%
+#     mutate(factor_effect_loss = pmin(count_offtrt_visits, 3) / 3,
+#            response_offtrt = case_when(ontrt == 1 ~ response_ontrt,
+#                                        ontrt == 0 & group == "ctl" ~ response_ontrt - factor_effect_loss * 0.8,
+#                                        ontrt == 0 & group == "trt" ~ response_ontrt - factor_effect_loss * 0.25)) %>%
+#     select(-count_offtrt_visits, -factor_effect_loss)
+# }
+
+
+
+
+
+
 
