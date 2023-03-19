@@ -2,7 +2,7 @@
 #  Date    : 18-03-23
 #  Authors : Thomas Drury (original Tobias Muetze)
 #  History : Original code simulate_data.R
-#  Purpose : Creates simulations for DAR_DROP scenario   
+#  Purpose : Creates large number of sims as DAR_DROP truth  
 #       
 # --------------------------------------------------------------
 #  Notes:
@@ -11,7 +11,6 @@
 # 2. Define general simulation study parameters
 # 3. Simulate on-trt data
 # 4. Simulate off-trt data
-# 5. Simulate missing data
 #
 # --------------------------------------------------------------
 
@@ -25,9 +24,11 @@ rm(list = ls())
 starttime = Sys.time()
 
 set.seed(12345)
+library(haven)
 library(tidyverse)
 
-r_func_vec = c("add_discontinuation", "add_missingness", "add_response_offtrt", "simulate_ontrt_data")
+r_func_vec <- c("add_discontinuation", "add_missingness", 
+                "add_response_offtrt", "simulate_ontrt_data")
 
 for(i in seq_along(r_func_vec)) {
   source(paste0("code/functions/", r_func_vec[i], ".R"))
@@ -37,12 +38,12 @@ for(i in seq_along(r_func_vec)) {
 # 2. Define general simulation study parameters
 # ---------------------------------------------------------------
 
-scenario = "dar_drop"
+file_name = "data/dar_drop_true.csv"
 
 # Simulations and number of subjects 
-n_sim = 10000
-n_ctl = 200
-n_trt = 200
+n_sim   = 5000
+n_ctl   = 200
+n_trt   = 200
 
 
 # Visits
@@ -130,31 +131,10 @@ df_data_offtrt_dar = df_data_offtrt_dar %>%
   mutate(response_offtrt = case_when(ontrt == 1 ~ response_ontrt,
                                      ontrt == 0 & group == "ctl" ~ response_ontrt - 0.6,
                                      ontrt == 0 & group == "trt" ~ response_ontrt - 0.2))
-
-
-# ---------------------------------------------------------------
-# 5. Simulate missing data
-# ---------------------------------------------------------------
-
-p_miss_vec = seq(0.1, 0.6, by = 0.1)
-
-for(i in seq_along(p_miss_vec)) {
   
-  p_miss = p_miss_vec[i]
-  theta  = data.frame(group = c("ctl", "trt"),
-                      theta1 = c(log(p_miss/(1-p_miss)), log(p_miss/(1-p_miss))),
-                      theta2 = c(0, 0), 
-                      stringsAsFactors = FALSE)
-  
-  df_final_dar = add_missingness(data = df_data_offtrt_dar, theta = theta)
-  
-  file_name = paste0("data/", scenario, "_p", str_replace(string = as.character(p_miss), pattern = "\\.", replacement = ""), ".csv")
-  write_csv(df_final_dar, file = file_name)
-  
-  rm("df_final_dar")
-  
-}
+# Create CSV
+write_csv(df_data_offtrt_dar, file = file_name)
+rm("df_data_offtrt_dar")
 
 Sys.time() - starttime
-
 

@@ -2,7 +2,7 @@
 #  Date    : 18-03-23
 #  Authors : Thomas Drury (original Tobias Muetze)
 #  History : Original code simulate_data.R
-#  Purpose : Creates simulations for DAR_DROP scenario   
+#  Purpose : Creates simulations for DNAR_LINEARCHG scenario  
 #       
 # --------------------------------------------------------------
 #  Notes:
@@ -37,7 +37,7 @@ for(i in seq_along(r_func_vec)) {
 # 2. Define general simulation study parameters
 # ---------------------------------------------------------------
 
-scenario = "dar_drop"
+scenario = "dnar_linearchg"
 
 # Simulations and number of subjects 
 n_sim = 10000
@@ -89,16 +89,17 @@ covar_ctl = sqrt(mat1 * mat2) * corr_mat
 rm(list = c("mat1", "mat2"))
 
 
-# Beta parameter for logistic regression modeling of DAR trt discont
-beta_discont_dar = data.frame(group = rep(c("ctl", "trt"), each = 5),
-                              visitn = rep(1:5, times = 2),
-                              beta_main = rep(-15, times = 10),
-                              beta_prev_resp = c(1.42, 1.14, 1.33, 1.51, 1.46, 
-                                                 1.42, 1.14, 1.47, 1.48, 1.40), 
-                              beta_current_resp = rep(0, times = 10),
-                              beta_baseline = c(0, 0.3, 0.1, 0.05, 0, 
-                                                0, 0.3, 0.1, 0.05, 0), 
-                              stringsAsFactors = FALSE)
+# Beta parameter for logistic regression modeling of DNAR trt discont
+beta_discont_dnar = data.frame(group = rep(c("ctl", "trt"), each = 5),
+                               visitn = rep(1:5, times = 2),
+                               beta_main = rep(-21, times = 10),
+                               beta_prev_resp = c(1.42, 1.14, 1.33, 1.51, 1.46,
+                                                  1.42, 1.14, 1.47, 1.48, 1.40),
+                               beta_current_resp = c(0.69, 0.69, 0.69, 0.72, 0.72,
+                                                     0.72, 0.75, 0.77, 0.77, 0.76),
+                               beta_baseline = c(0, 0.3, 0.1, 0.05, 0,
+                                                 0, 0.3, 0.1, 0.05, 0),
+                               stringsAsFactors = FALSE)
 
 
 # ---------------------------------------------------------------
@@ -120,16 +121,18 @@ df_data_ontrt = simulate_ontrt_data(mu_trt = mu_trt,
 # ---------------------------------------------------------------
 
 # Add treatment discontinuation indicator data data frames
-df_data_offtrt_dar  = add_discontinuation(data = df_data_ontrt, beta_discont = beta_discont_dar)
+df_data_offtrt_dnar = add_discontinuation(data = df_data_ontrt, beta_discont = beta_discont_dnar)
 rm("df_data_ontrt")
 
-
-# Drop scenario means immediate change of treatment effect
-df_data_offtrt_dar = df_data_offtrt_dar %>% 
+df_data_offtrt_dnar <- df_data_offtrt_dnar %>%
+  group_by(sim_run, subjid) %>%
+  mutate(count_offtrt_visits = cumsum(ontrt == 0)) %>%
   ungroup %>%
-  mutate(response_offtrt = case_when(ontrt == 1 ~ response_ontrt,
-                                     ontrt == 0 & group == "ctl" ~ response_ontrt - 0.6,
-                                     ontrt == 0 & group == "trt" ~ response_ontrt - 0.2))
+  mutate(factor_effect_loss = pmin(count_offtrt_visits, 3) / 3,
+         response_offtrt = case_when(ontrt == 1 ~ response_ontrt,
+                                     ontrt == 0 & group == "ctl" ~ response_ontrt - factor_effect_loss * 0.8,
+                                     ontrt == 0 & group == "trt" ~ response_ontrt - factor_effect_loss * 0.25)) %>%
+  select(-count_offtrt_visits, -factor_effect_loss)
 
 
 # ---------------------------------------------------------------
@@ -146,15 +149,14 @@ for(i in seq_along(p_miss_vec)) {
                       theta2 = c(0, 0), 
                       stringsAsFactors = FALSE)
   
-  df_final_dar = add_missingness(data = df_data_offtrt_dar, theta = theta)
+  df_final_dnar = add_missingness(data = df_data_offtrt_dnar, theta = theta)
   
   file_name = paste0("data/", scenario, "_p", str_replace(string = as.character(p_miss), pattern = "\\.", replacement = ""), ".csv")
-  write_csv(df_final_dar, file = file_name)
+  write_csv(df_final_dnar, file = file_name)
   
-  rm("df_final_dar")
+  rm("df_final_dnar")
   
 }
 
 Sys.time() - starttime
-
 

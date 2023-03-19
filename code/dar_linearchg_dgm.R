@@ -2,7 +2,7 @@
 #  Date    : 18-03-23
 #  Authors : Thomas Drury (original Tobias Muetze)
 #  History : Original code simulate_data.R
-#  Purpose : Creates simulations for DAR_DROP scenario   
+#  Purpose : Creates simulations for DAR_LINEARCHG scenario   
 #       
 # --------------------------------------------------------------
 #  Notes:
@@ -37,7 +37,7 @@ for(i in seq_along(r_func_vec)) {
 # 2. Define general simulation study parameters
 # ---------------------------------------------------------------
 
-scenario = "dar_drop"
+scenario = "dar_linearchg"
 
 # Simulations and number of subjects 
 n_sim = 10000
@@ -124,12 +124,16 @@ df_data_offtrt_dar  = add_discontinuation(data = df_data_ontrt, beta_discont = b
 rm("df_data_ontrt")
 
 
-# Drop scenario means immediate change of treatment effect
-df_data_offtrt_dar = df_data_offtrt_dar %>% 
+# Linear change of treatment effect
+df_data_offtrt_dar = df_data_offtrt_dar %>%
+  group_by(sim_run, subjid) %>%
+  mutate(count_offtrt_visits = cumsum(ontrt == 0)) %>%
   ungroup %>%
-  mutate(response_offtrt = case_when(ontrt == 1 ~ response_ontrt,
-                                     ontrt == 0 & group == "ctl" ~ response_ontrt - 0.6,
-                                     ontrt == 0 & group == "trt" ~ response_ontrt - 0.2))
+  mutate(factor_effect_loss = pmin(count_offtrt_visits, 3) / 3,
+         response_offtrt = case_when(ontrt == 1 ~ response_ontrt,
+                                     ontrt == 0 & group == "ctl" ~ response_ontrt - factor_effect_loss * 0.8,
+                                     ontrt == 0 & group == "trt" ~ response_ontrt - factor_effect_loss * 0.25)) %>%
+  select(-count_offtrt_visits, -factor_effect_loss)
 
 
 # ---------------------------------------------------------------
@@ -156,5 +160,3 @@ for(i in seq_along(p_miss_vec)) {
 }
 
 Sys.time() - starttime
-
-
