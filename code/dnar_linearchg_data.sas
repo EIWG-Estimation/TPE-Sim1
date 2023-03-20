@@ -18,6 +18,8 @@
 %let scenario = dnar_linearchg;
 
 *** SET UP FILE NAME TO THE CSV AND LIBRARY FOR STORING SAS DATA ***;
+filename csv0 "/hpawrk/tad66240/collaboration/eig_estimation/tpe-sim1/data/&scenario._true.csv";
+
 filename csv1 "/hpawrk/tad66240/collaboration/eig_estimation/tpe-sim1/data/&scenario._p01.csv";
 filename csv2 "/hpawrk/tad66240/collaboration/eig_estimation/tpe-sim1/data/&scenario._p02.csv";
 filename csv3 "/hpawrk/tad66240/collaboration/eig_estimation/tpe-sim1/data/&scenario._p03.csv";
@@ -117,6 +119,7 @@ quit;
 ********************************************************************;
 *** SECTION 2: CALL MACRO TO READ IN ALL CSVS                    ***;
 ********************************************************************;
+%read_csv(csvfile=csv0, dsetname=data.&scenario._true);
 
 %read_csv(csvfile=csv1, dsetname=&scenario._p01);
 %read_csv(csvfile=csv2, dsetname=&scenario._p02);
