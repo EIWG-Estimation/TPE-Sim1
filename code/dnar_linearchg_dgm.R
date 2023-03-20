@@ -19,7 +19,7 @@
 # 1. Source R code and load libraries 
 # --------------------------------------------------------------
 
-setwd("C:/Users/tad66240/GSK/TD Statistics Work - statistics/collaboration/eig-estimation/git-repositories/TPE-Sim1/")
+setwd("/shared-scratch/area/tad66240/TPE-Sim1/")
 rm(list = ls())
 
 starttime = Sys.time()
@@ -151,7 +151,7 @@ for(i in seq_along(p_miss_vec)) {
   
   df_final_dnar = add_missingness(data = df_data_offtrt_dnar, theta = theta)
   
-  file_name = paste0("data/", scenario, "_p", str_replace(string = as.character(p_miss), pattern = "\\.", replacement = ""), ".csv")
+  file_name = paste0("/shared/259/arenv/arwork/tad66240/", scenario, "_p", str_replace(string = as.character(p_miss), pattern = "\\.", replacement = ""), ".csv")
   write_csv(df_final_dnar, file = file_name)
   
   rm("df_final_dnar")
