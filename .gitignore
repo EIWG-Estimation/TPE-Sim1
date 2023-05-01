@@ -1,1 +1,6 @@
-/data/
+/main/data/
+/main/results/*.sas7bdat
+
+
+
+

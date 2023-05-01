@@ -4,9 +4,10 @@ Work by the EIWG Estimation sub-team on treatment policy estimation. Simulation 
 ## Description of the work
 To add.
 
-## Description of code
+Results are included in 7Zip archive file format ( https://www.7-zip.org/ )
 
-### Data Generation
+
+### Data Generation Code
 
 |File name | Description|
 |------------|----------|
@@ -20,7 +21,7 @@ To add.
 | dnar_linearchg_true.R | Creation of large data to estimate the true value in scenario with discontinuation not at random and linear change to off treatment effects.|
 
 
-### Estimation
+### Estimation Code
 
 
 |File name | Description|
