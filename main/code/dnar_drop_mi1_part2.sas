@@ -22,55 +22,14 @@
 %let part     = 2;
 %inc "/hpawrk/tad66240/collaboration/eig_estimation/tpe-sim1/main/code/analysis_setup.sas";
 
-%macro run_mi(rdrate=, seed=, nimp=);
 
 ********************************************************************;
 *** READ IN DATA                                                 ***;
 ********************************************************************;
 
-proc sql noprint;
-  create table ds as
-    select *, 1-ontrt as disc 
-    from data.&scenario.
-    where rdrate = &rdrate. and (5000 lt sim_run le 10000) 
-    order by rdrate, sim_run, groupn, subjid, visitn, disc;
-quit;
-
-
-********************************************************************;
-*** TRANSPOSE TO WIDE FORMAT FOR MI MODEL                        ***;
-********************************************************************;
-
-data ds1;
-  set ds;
-  by rdrate sim_run groupn subjid;
-  retain row 0 y1-y5 d1-d5 w1-w5 .;   *** RETAIN VARIABLES OVER ROWS ***;
-
-  array y[5] y1-y5;   *** ARRAY TO HOLD RESPONSES ***;
-  array d[5] d1-d5;   *** ARRAY TO HOLD DISCONTINUATION INDICATORS ***;
-  array w[5] w1-w5;   *** ARRAY TO HOLD WITHDRAWAL INDICATORS ***;
-
-  if first.subjid then do;   *** FOR EACH SUBJECT RESET THE ARRAYS ***;
-    row = 0;
-	do j = 1 to 5;
-     y[j] = .;
-	 d[j] = .;
-	 w[j] = .;
-	end;
-  end;
-
-  row    = row + 1;     *** COUNT THE ROW ***;
-  y[row] = response;    
-  d[row] = disc;        *** DISCONTINUED FLAG ***;
-  w[row] = is_missing;  *** WITHDRAWAL FLAG ***;
-
-  if last.subjid then do;   *** ONLY OUTPUT FINAL ROW PER PATIENT ***;
-    disctime = 5 - sum(of d1-d5);
-    withtime = 5 - sum(of w1-w5);
-    output;
-  end;
-  keep rdrate sim_run subjid groupn group baseline_var disctime withtime y1-y5 d1-d5 w1-w5;
-
+data ds_wide;
+  set data.&scenario._data;
+  where 2500 lt sim_run le 5000;
 run;
 
 
@@ -78,8 +37,10 @@ run;
 *** FIT MI1 - NO ON/OFF INDICATORS                               ***;
 ********************************************************************;
 
+%macro run_mi1(rdrate=, seed=, nimp=);
+
 %ods_off(notes=N);
-proc mi data    = ds1
+proc mi data    = ds_wide (where = (rdrate = &rdrate.))
         out     = mi1 (rename = _imputation_ = imputation)
         nimpute = &nimp.
         seed    = &seed.;
@@ -140,6 +101,10 @@ proc mixed data = mi_long;
 run;
 %ods_on();
 
+proc datasets lib = work nolist;
+  delete mi: ;                *** REMOVE SUBJECT LEVEL DATA ***;
+quit;
+
 
 ********************************************************************;
 *** COMBINE LSM RESULTS USING RUBINS RULES                       ***;
@@ -163,7 +128,7 @@ data lsm_policy_&rdrate.;
   miseed = &seed.;
   lsm_policy_nimp  = nimpute;
   lsm_policy_est   = estimate;
-  lsm_policy_var   = stderr*2;
+  lsm_policy_var   = stderr**2;
   lsm_policy_se    = stderr;
   lsm_policy_lower = ifn( lclmean ne ., lclmean, estimate - probit(0.975)*stderr);  *** IF NO MISSING DATA LCLMEAN IS MISSING ***;
   lsm_policy_upper = ifn( uclmean ne ., uclmean, estimate + probit(0.975)*stderr);  *** IF NO MISSING DATA UCLMEAN IS MISSING ***;
@@ -192,7 +157,7 @@ data dif_policy_&rdrate.;
   set dif_mia;
   miseed = &seed.;
   dif_policy_est   = estimate;
-  dif_policy_var   = stderr*2;
+  dif_policy_var   = stderr**2;
   dif_policy_se    = stderr;
   dif_policy_lower = ifn( lclmean ne ., lclmean, estimate - probit(0.975)*stderr);  *** IF NO MISSING DATA LCLMEAN IS MISSING ***;
   dif_policy_upper = ifn( uclmean ne ., uclmean, estimate + probit(0.975)*stderr);  *** IF NO MISSING DATA UCLMEAN IS MISSING ***;
@@ -200,19 +165,19 @@ data dif_policy_&rdrate.;
   keep rdrate sim_run groupn _groupn visitn _visitn dif_: miseed;
 run;
 
-%mend run_mi;
+%mend run_mi1;
 
 
 ********************************************************************;
 *** CALL ONCE FOR EACH RDRATE                                    ***;
 ********************************************************************;
 
-%run_mi(rdrate=1, seed=1111, nimp=25);
-%run_mi(rdrate=2, seed=2222, nimp=25);
-%run_mi(rdrate=3, seed=3333, nimp=25);
-%run_mi(rdrate=4, seed=4444, nimp=25);
-%run_mi(rdrate=5, seed=5555, nimp=25);
-%run_mi(rdrate=6, seed=6666, nimp=25);
+%run_mi1(rdrate=1, seed=1111, nimp=25);
+%run_mi1(rdrate=2, seed=2222, nimp=25);
+%run_mi1(rdrate=3, seed=3333, nimp=25);
+%run_mi1(rdrate=4, seed=4444, nimp=25);
+%run_mi1(rdrate=5, seed=5555, nimp=25);
+%run_mi1(rdrate=6, seed=6666, nimp=25);
 
 
 ********************************************************************;

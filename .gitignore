@@ -1,5 +1,7 @@
 /main/data/
 /main/results/*.sas7bdat
+/null/data/
+/null/results/*.sas7bdat
 
 
 

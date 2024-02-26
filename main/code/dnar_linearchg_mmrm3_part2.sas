@@ -46,253 +46,56 @@
 *** READ IN DATA                                                 ***;
 ********************************************************************;
 
-proc sql noprint;
-  create table ds as
-    select *, 1-ontrt as disc 
-    from data.&scenario.
-    where 5000 lt sim_run le 10000
-    order by rdrate, sim_run, groupn, subjid, visitn, disc;
-quit;
-
-
-********************************************************************;
-*** TRANSPOSE TO WIDE FORMAT TO CODE PATTERNS                    ***;
-********************************************************************;
-
-data ds1;
-  set ds;
-  by rdrate sim_run groupn subjid;
-  retain row 0 y1-y5 d1-d5 w1-w5 .;   *** RETAIN VARIABLES OVER ROWS ***;
-
-  array y[5] y1-y5;   *** ARRAY TO HOLD RESPONSES ***;
-  array d[5] d1-d5;   *** ARRAY TO HOLD DISCONTINUATION INDICATORS ***;
-  array w[5] w1-w5;   *** ARRAY TO HOLD WITHDRAWAL INDICATORS ***;
-  array p[5] p1-p5;   *** ARRAY TO HOLD PATTERN AT EACH VISIT ***;
-
-  if first.subjid then do;   *** FOR EACH SUBJECT RESET THE ARRAYS ***;
-    row = 0;
-	do j = 1 to 5;
-     y[j] = .;
-	 d[j] = .;
-	 w[j] = .;
-	 p[j] = .;
-	end;
-  end;
-
-  row    = row + 1;     *** COUNT THE ROW ***;
-  y[row] = response;    
-  d[row] = disc;        *** DISCONTINUED FLAG ***;
-  w[row] = is_missing;  *** WITHDRAWAL FLAG ***;
-
-  if last.subjid then do;   *** ONLY OUTPUT FINAL ROW PER PATIENT ***;
-  
-    disctime = 5 - sum(of d1-d5);
-    withtime = 5 - sum(of w1-w5);
-  
-    do j = 1 to 5;
-      p[j] = ifn(j <= disctime, 6, disctime+1); *** CREATE PATTERN AT EACH VISIT (LEVEL 6 = ON TREATMENT) ***;
-    end; 
-  
-    output;
-  
-  end;
-  keep rdrate sim_run subjid groupn group baseline_var disctime withtime y1-y5 d1-d5 w1-w5 p1-p5;
-
+data ds_wide;
+  set data.&scenario._data;
+  where 2500 lt sim_run le 5000;
 run;
 
 
 ********************************************************************;
-*** COUNT THE DATA FOR EACH PATTERN AT EACH VISIT AND FLAG ZEROS ***;
+*** CREATE LONG FORMAT DATA                                      ***;
 ********************************************************************;
 
-data ds2;
-  set ds1;
-  by rdrate sim_run groupn;
-  retain pv11-pv15 pv21-pv25 pv31-pv35 pv41-pv45 pv51-pv55 pv61-pv65 0;  
-
-  array y[5] y1-y5;        *** SUBJECTS DATA AT EACH VISIT ***;
-  array p[5] p1-p5;        *** SUBJECTS PATTERN AT EACH VISIT ***; 
-  array pv[6,5] pv11-pv15
-                pv21-pv25
-                pv31-pv35
-                pv41-pv45
-                pv51-pv55
-                pv61-pv65;  *** PATTERN BY VISIT DATA COUNTS ***;
-    
-  if first.groupn then do; 
-    do i = 1 to 6;
-    do j = 1 to 5;
-      pv[i,j] = 0;   *** RESET ALL THE PATTERN VISIT FLAGS TO NO ***;
-    end;
-    end;
-  end;    
-  
-  do j = 1 to 5;
-    if y[j] ne . then pv[p[j], j] = pv[p[j], j] + 1;  *** COUNT OBSERVED DATA IN EACH PATTERN AT VISIT J ***;
-  end;
-  
-  if last.groupn then do;   *** CHECK COUNTS OF EACH DISC PATTERN AT EACH VISIT IN EACH GROUPN FOR ISSUES ***;
-  
-    p_i1 = min(of pv11-pv15)=0;  *** ANY ZERO COUNTS IN PV11-PV15 THEN ISSUE WITH NO PAT 1 DATA AT A VISIT ***;
-    p_i2 = min(of pv22-pv25)=0;  *** ANY ZERO COUNTS IN PV22-PV25 THEN ISSUE WITH NO PAT 2 DATA AT A VISIT ***;
-    p_i3 = min(of pv33-pv35)=0;  *** ANY ZERO COUNTS IN PV33-PV35 THEN ISSUE WITH NO PAT 3 DATA AT A VISIT ***;
-    p_i4 = min(of pv44-pv45)=0;  *** ANY ZERO COUNTS IN PV44-PV45 THEN ISSUE WITH NO PAT 4 DATA AT A VISIT ***;
-    p_i5 = min(of pv55-pv55)=0;  *** ANY ZERO COUNTS IN PV55 ONLY THEN ISSUE WITH NO PAT 5 DATA AT A VISIT ***;
-    
-    d_i1 = sum(pv11) = 0;                     *** ZERO PV11 DATA THEN ISSUE WITH NO DISC DATA AT VISIT 1 ***;
-    d_i2 = sum(pv12,pv22) = 0;                *** ZERO PV12-PV22 DATA THEN ISSUE WITH NO DISC DATA AT VISIT 2 ***;
-    d_i3 = sum(pv13,pv23,pv33) = 0;           *** ZERO PV13-PV33 DATA THEN ISSUE WITH NO DISC DATA AT VISIT 3 ***;
-    d_i4 = sum(pv14,pv24,pv34,pv44) = 0;      *** ZERO PV14-PV44 DATA THEN ISSUE WITH NO DISC DATA AT VISIT 4 ***;
-    d_i5 = sum(pv15,pv25,pv35,pv45,pv55) = 0; *** ZERO PV15-PV55 DATA THEN ISSUE WITH NO DISC DATA AT VISIT 5 ***;
-        
-    output;
-  end;
-  
-  keep rdrate sim_run groupn p_i: d_i:;
-
-run;
-
-
-********************************************************************;
-*** CHECK FOR ISSUE IN EACH GROUP FOR EACH PATTERN AT EACH VISIT ***;
-********************************************************************;
-
-proc sql noprint;
-
-   create table ds3 as
-     select rdrate, sim_run, 
-            max(p_i1) as p_i1, max(p_i2) as p_i2, max(p_i3) as p_i3, max(p_i4) as p_i4, max(p_i5) as p_i5,    
-            max(d_i1) as d_i1, max(d_i2) as d_i2, max(d_i3) as d_i3, max(d_i4) as d_i4, max(d_i5) as d_i5    
-     from ds2
-     group by rdrate, sim_run;
-
-quit;
-
-
-********************************************************************;
-*** CHANGE BACK TO LONG FORMAT FOR FITTING MMRM MODELS           ***;
-********************************************************************;
-
-data ds4;
-  merge ds1
-        ds3;
+data ds_long;
+  set ds_wide;
   by rdrate sim_run;
   
-  array y[5] y1-y5;   *** ARRAY TO HOLD RESPONSES ***;
-  array d[5] d1-d5;   *** ARRAY TO HOLD DISCONTINUATION INDICATORS ***;
-  array p[5] p1-p5;   *** ARRAY TO HOLD PATTERNS AT EACH VISIT ***;
-  array w[5] w1-w5;   *** ARRAY TO HOLD WITHDRAWAL INDICATORS ***;
+  array yf[5] yf1-yf5;  *** ARRAY TO HOLD FULL RESPONSES ***;
+
+  array y[5] y1-y5;     *** ARRAY TO HOLD RESPONSES ***;
+  array d[5] d1-d5;     *** ARRAY TO HOLD DISCONTINUATION INDICATORS ***;
+  array p[5] p1-p5;     *** ARRAY TO HOLD PATTERNS AT EACH VISIT ***;
+  array w[5] w1-w5;     *** ARRAY TO HOLD WITHDRAWAL INDICATORS ***;
+  
+  array disc_code[5] disc1-disc5;     
+  array pat_code[5] pat1-pat5;
 
   do j = 1 to 5;
-    visitn   = j;
-    response = y[j];
-    disc     = d[j];
-    pattern  = p[j];
-    with     = w[j];
+    visitn        = j;
+    response_full = yf[j];
+    response      = y[j];
+    disc          = d[j];
+    pattern       = p[j];
+    with          = w[j];
+    disccode      = disc_code[j];
+    patcode       = pat_code[j];
+    if response_full ne . then change_full = response_full - baseline_var;
+    else change_full = .;
     if response ne . then change = response - baseline_var;
     else change = .;
     output;
   end;
 
-  keep rdrate sim_run subjid groupn group visitn baseline_var 
-       response change disc disctime pattern with withtime p_i1-p_i5 d_i1-d_i5;
+  keep rdrate sim_run subjid groupn group visitn patmaxn patmax
+       baseline_var response_full response change_full change 
+       disc disccode disctime pattern patcode with withtime 
+       p_i1-p_i5 d_i1-d_i5 e_i1-e_i5;
 
 run;
 
-
-********************************************************************;
-*** COMBINE PATTERNS WITH ISSUES                                 ***;
-********************************************************************;
-
-data ds5;
-  set ds4;
-  
-  issues = cat(p_i1, p_i2, p_i3, p_i4, p_i5); *** 32 POSSIBLE PATTERN ISSUES ***;     
-  select (issues);
-  
-    when ("11111") do; if pattern in (1 2 3 4 5 6) then patcode = 123456; end; *** ONLY 1 PATTERN POSSIBLE (MMRM1) ***;
-  
-    when ("11110") do; if pattern in (1 2 3 4 5) then patcode = 12345; else patcode = pattern; end;  *** ONLY 2 PATTERNS POSSIBLE (MMRM2) ***;
-    when ("11101") do; if pattern in (1 2 3 4 5) then patcode = 12345; else patcode = pattern; end; 
-    when ("11011") do; if pattern in (1 2 3 4 5) then patcode = 12345; else patcode = pattern; end; 
-    when ("10111") do; if pattern in (1 2 3 4 5) then patcode = 12345; else patcode = pattern; end;
-    when ("01111") do; if pattern in (1 2 3 4 5) then patcode = 12345; else patcode = pattern; end;
-    
-    when ("11010") do; if pattern in (1 2 3 4) then patcode = 1234; else patcode = pattern; end; *** 3 PATTERNS POSSIBLE ***;
-    when ("10110") do; if pattern in (1 2 3 4) then patcode = 1234; else patcode = pattern; end;
-    when ("11100") do; if pattern in (1 2 3 4) then patcode = 1234; else patcode = pattern; end; 
-    when ("01110") do; if pattern in (1 2 3 4) then patcode = 1234; else patcode = pattern; end;
-    when ("00111") do; if pattern in (2 3 4 5) then patcode = 2345; else patcode = pattern; end;
-
-    when ("11001") do; if pattern in (1 2 3) then patcode = 123; else if pattern in (4 5) then patcode = 45; else patcode = pattern; end;
-    when ("10101") do; if pattern in (1 2 3) then patcode = 123; else if pattern in (4 5) then patcode = 45; else patcode = pattern; end;
-    when ("01101") do; if pattern in (1 2 3) then patcode = 123; else if pattern in (4 5) then patcode = 45; else patcode = pattern; end;
-    when ("10011") do; if pattern in (1 2) then patcode = 12; else if pattern in (3 4 5) then patcode = 345; else patcode = pattern; end;
-    when ("01011") do; if pattern in (1 2) then patcode = 12; else if pattern in (3 4 5) then patcode = 345; else patcode = pattern; end;
-    
-    when ("10100") do; if pattern in (1 2 3) then patcode = 123; else patcode = pattern; end;  *** 4 PATTERNS POSSIBLE ***;
-    when ("11000") do; if pattern in (1 2 3) then patcode = 123; else patcode = pattern; end;
-    when ("01100") do; if pattern in (1 2 3) then patcode = 123; else patcode = pattern; end;
-    when ("00110") do; if pattern in (2 3 4) then patcode = 234; else patcode = pattern; end;
-    when ("00011") do; if pattern in (3 4 5) then patcode = 345; else patcode = pattern; end;
-
-    when ("10010") do; if pattern in (1 2) then patcode = 12; else if pattern in (3 4) then patcode = 34; else patcode = pattern; end;
-    when ("01010") do; if pattern in (1 2) then patcode = 12; else if pattern in (3 4) then patcode = 34; else patcode = pattern; end;
-    when ("10001") do; if pattern in (1 2) then patcode = 12; else if pattern in (4 5) then patcode = 45; else patcode = pattern; end;
-    when ("01001") do; if pattern in (1 2) then patcode = 12; else if pattern in (4 5) then patcode = 45; else patcode = pattern; end;
-    when ("00101") do; if pattern in (2 3) then patcode = 23; else if pattern in (4 5) then patcode = 45; else patcode = pattern; end;
-
-    when ("10000") do; if pattern in (1 2) then patcode = 12; else patcode = pattern; end;  *** 5 PATTERNS POSSIBLE ***;
-    when ("01000") do; if pattern in (1 2) then patcode = 12; else patcode = pattern; end;
-    when ("00100") do; if pattern in (2 3) then patcode = 23; else patcode = pattern; end;
-    when ("00010") do; if pattern in (3 4) then patcode = 34; else patcode = pattern; end;
-    when ("00001") do; if pattern in (4 5) then patcode = 45; else patcode = pattern; end;
-  
-    when ("00000") do; patcode = pattern; end;  *** FULL 6 PATTERNS POSSIBLE (MMRM3) ***;
-
-    otherwise;
- 
-  end;
-
-  select(issues);
-    when ("00000") fitn = 1;
-    when ("10000", "01000", "00100", "00010", "00001") fitn = 2;
-    when ("10100", "11000", "01100", "00110", "00011", "10010", "01010", "10001", "01001", "00101") fitn = 3;    
-    when ("11010", "10110", "11100", "01110", "00111", "11001", "10101", "01101", "10011", "01011") fitn = 4;
-    when ("11110", "11101", "11011", "10111", "01111") fitn = 5; 
-    when ("11111") fitn = 6;
-    otherwise;
-  end;
-    
-  length fit $30;
-  select(fitn);
-    when (1) fit = "6 Patterns - MMRM3";
-    when (2) fit = "5 Patterns";
-    when (3) fit = "4 Patterns";
-    when (4) fit = "3 Patterns";
-    when (5) fit = "2 Patterns - MMRM2";
-    when (6) fit = "1 Pattern - MMRM1";
-    otherwise;
-  end;
-  
-  drop p_i: d_i:;
-  
+proc sort data = ds_long;
+    by rdrate sim_run patmaxn patmax visitn groupn subjid;
 run;
-
-
-proc sort data = ds5
-          out  = ds;
-    by rdrate sim_run visitn groupn pattern subjid;
-run;
-
-
-********************************************************************;
-*** CLEAN UP WORK LIBRARY                                        ***;
-********************************************************************;
-
-proc datasets lib = work nolist;
-  delete ds1 ds2 ds3 ds4 ds5;
-quit;
 
 
 ********************************************************************;
@@ -307,9 +110,9 @@ quit;
    
   *** COUNT SIMS ***;
   data ds_mmrm3;
-    set ds (where = (rdrate = &rdrate.)) end = eof;
+    set ds_long (where = (rdrate = &rdrate.)) end = eof;
     retain sim_count 0;
-    by rdrate sim_run fitn fit;
+    by rdrate sim_run patmaxn patmax;
     if first.sim_run then sim_count + 1;
 	if eof then call symput("nsims", put(sim_count,best.));
   run;
@@ -325,7 +128,7 @@ quit;
 
   *** MMRM3 WITH LSM AT CORRECT BASELINE VALUE ***;
   proc mixed data = ds_mmrm3 (where = (sim_count = &ii.));
-    by rdrate sim_run fit fitn;
+    by rdrate sim_run patmaxn patmax;
     class visitn groupn patcode subjid;
     model change = visitn*groupn*patcode visitn*baseline_var / noint ddfm=kr;
     repeated visitn / subject=subjid type=un;
@@ -337,7 +140,7 @@ quit;
   data lsm_r&rdrate.;
     set %if &ii. ne 1 %then %do; lsm_r&rdrate. %end;
         lsm_sc&ii.;
-    by rdrate sim_run fitn fit visitn groupn patcode;
+    by rdrate sim_run patmaxn patmax visitn groupn patcode;
   run;
 
   %end;
@@ -359,7 +162,7 @@ quit;
 
 data lsm_mmrm3;
   set lsm_r:;
-  by rdrate sim_run fitn fit visitn groupn patcode;
+  by rdrate sim_run patmaxn patmax visitn groupn patcode;
 run; 
 
 %ods_off();
@@ -373,14 +176,14 @@ quit;
 *** CALCULATE PROPORTIONS BY PATTERN AND TRANSPOSE               ***;
 ********************************************************************;
 
-proc freq data = ds noprint;
-  by rdrate sim_run fitn fit visitn groupn;
+proc freq data = ds_long noprint;
+  by rdrate sim_run patmaxn patmax visitn groupn;
   tables patcode / out = mmrm3_om;
 run;
 
 data lsm_mmrm3_om;
   set mmrm3_om;
-  by rdrate sim_run fitn fit visitn groupn patcode;
+  by rdrate sim_run patmaxn patmax visitn groupn patcode;
   retain row pat 0 n_pat1-n_pat6 .;
 
   array n_pat[6] n_pat1-n_pat6;
@@ -397,7 +200,7 @@ data lsm_mmrm3_om;
 
   if last.groupn then output;
 
-  keep rdrate sim_run fitn fit visitn groupn n_pat:;
+  keep rdrate sim_run patmaxn patmax visitn groupn n_pat:;
  
 run;
 
@@ -408,7 +211,7 @@ run;
 
 data lsm_mmrm3_wide;
   set lsm_mmrm3;
-  by rdrate sim_run fitn fit visitn groupn patcode;
+  by rdrate sim_run patmaxn patmax visitn groupn patcode;
   retain row pat 0 lsm_pat1-lsm_pat6
          lsm_vc11 
          lsm_vc21-lsm_vc22 
@@ -452,7 +255,7 @@ data lsm_mmrm3_wide;
   end;
     
   if last.groupn then output;
-  keep rdrate sim_run fitn fit visitn groupn lsm_pat: lsm_vc:;
+  keep rdrate sim_run patmaxn patmax visitn groupn lsm_pat: lsm_vc:;
  
 run;
 
@@ -464,7 +267,7 @@ run;
 data lsm_policy;
   merge lsm_mmrm3_om
         lsm_mmrm3_wide;
-  by rdrate sim_run fitn fit visitn groupn;
+  by rdrate sim_run patmaxn patmax visitn groupn;
   
   ntotal = sum(of n_pat1-n_pat6);
   npats  = 6-nmiss(lsm_pat1,lsm_pat2,lsm_pat3,lsm_pat4,lsm_pat5,lsm_pat6);
@@ -479,7 +282,7 @@ data lsm_policy;
   else if npats = 2 then do;
     
     p_pat1 = n_pat1 / ntotal;
-    p_pat2 = n_pat2 / ntotal;  *** PAT2 IS ON TREATMENT ***;
+    p_pat2 = n_pat2 / ntotal;  
 
     lsm_policy_est = p_pat1*lsm_pat1 + p_pat2*lsm_pat2;
 
@@ -498,7 +301,7 @@ data lsm_policy;
     
     p_pat1 = n_pat1 / ntotal;
     p_pat2 = n_pat2 / ntotal;
-    p_pat3 = n_pat3 / ntotal;  *** PAT3 IS ON TREATMENT ***;
+    p_pat3 = n_pat3 / ntotal;  
 
     lsm_policy_est = p_pat1*lsm_pat1 + p_pat2*lsm_pat2 + p_pat3*lsm_pat3;
 
@@ -524,7 +327,7 @@ data lsm_policy;
     p_pat1 = n_pat1 / ntotal;
     p_pat2 = n_pat2 / ntotal;
     p_pat3 = n_pat3 / ntotal;
-    p_pat4 = n_pat4 / ntotal;  *** PAT4 IS ON TREATMENT ***;
+    p_pat4 = n_pat4 / ntotal;  
 
     lsm_policy_est = p_pat1*lsm_pat1 + p_pat2*lsm_pat2 + p_pat3*lsm_pat3 + p_pat4*lsm_pat4;
 
@@ -557,7 +360,7 @@ data lsm_policy;
     p_pat2 = n_pat2 / ntotal;
     p_pat3 = n_pat3 / ntotal;
     p_pat4 = n_pat4 / ntotal;
-    p_pat5 = n_pat5 / ntotal;  *** PAT5 IS ON TREATMENT ***;
+    p_pat5 = n_pat5 / ntotal;  
 
     lsm_policy_est = p_pat1*lsm_pat1 + p_pat2*lsm_pat2 + p_pat3*lsm_pat3 + p_pat4*lsm_pat4 + p_pat5*lsm_pat5;
 
@@ -598,7 +401,7 @@ data lsm_policy;
     p_pat3 = n_pat3 / ntotal;
     p_pat4 = n_pat4 / ntotal;
     p_pat5 = n_pat5 / ntotal;  
-    p_pat6 = n_pat6 / ntotal;  *** PAT6 IS ON TREATMENT ***;
+    p_pat6 = n_pat6 / ntotal;  
 
     lsm_policy_est = p_pat1*lsm_pat1 + p_pat2*lsm_pat2 + p_pat3*lsm_pat3 + p_pat4*lsm_pat4 + p_pat5*lsm_pat5 + p_pat6*lsm_pat6;
 
@@ -649,7 +452,19 @@ data lsm_policy;
   lsm_policy_lower_adj = lsm_policy_est - probit(0.975)*lsm_policy_se_adj;
   lsm_policy_upper_adj = lsm_policy_est + probit(0.975)*lsm_policy_se_adj;
 
-  keep rdrate sim_run fitn fit visitn groupn ntotal lsm_policy_:;
+  fitn = 6 - patmaxn + 1;
+  length fit $50;
+  select(fitn);
+    when (1) fit = "6-pattern MMRM (MMRM3)";
+    when (2) fit = "5-pattern MMRM";
+    when (3) fit = "4-pattern MMRM";
+    when (4) fit = "3-pattern MMRM";
+    when (5) fit = "2-pattern MMRM (MMRM2)";
+    when (6) fit = "1-pattern MMRM (MMRM1)";
+    otherwise;
+  end;
+
+  keep rdrate sim_run patmaxn patmax fitn fit visitn groupn ntotal lsm_policy_:;
   
 run;
 
@@ -661,7 +476,7 @@ run;
 data dif_policy;
   merge lsm_policy (where=(groupn=1) rename=(ntotal = n1 lsm_policy_est=lsm_policy1 lsm_policy_var=lsm_policy_var1 lsm_policy_var_adj=lsm_policy_var_adj1))
         lsm_policy (where=(groupn=2) rename=(ntotal = n2 lsm_policy_est=lsm_policy2 lsm_policy_var=lsm_policy_var2 lsm_policy_var_adj=lsm_policy_var_adj2));
-  by rdrate sim_run fitn fit visitn;
+  by rdrate sim_run patmaxn patmax visitn;
 
   groupn  = 1;
   _groupn = 2;
@@ -679,7 +494,7 @@ data dif_policy;
   dif_policy_lower_adj = dif_policy_est - probit(0.975)*dif_policy_se_adj;
   dif_policy_upper_adj = dif_policy_est + probit(0.975)*dif_policy_se_adj;
 
-  keep rdrate sim_run fitn fit visitn _visitn groupn _groupn n1 n2 dif_policy_:;
+  keep rdrate sim_run patmaxn patmax fitn fit visitn _visitn groupn _groupn n1 n2 dif_policy_:;
 
 run;
 
@@ -688,14 +503,14 @@ run;
 *** ORGANISE RESULTS AND OUTPUT TO PERM LOCATION                 ***;
 ********************************************************************;
 
-proc sort data = lsm_policy (keep = rdrate sim_run groupn visitn fitn fit lsm_policy_:)
+proc sort data = lsm_policy (keep = rdrate sim_run patmaxn patmax groupn visitn fitn fit lsm_policy_:)
           out  = results.&scenario._mmrm3_lsm_part&part.;
-  by rdrate sim_run fitn fit groupn visitn;
+  by rdrate sim_run patmaxn patmax fitn fit groupn visitn;
 run;
 
-proc sort data = dif_policy (keep = rdrate sim_run groupn _groupn visitn _visitn fitn fit dif_policy_:)
+proc sort data = dif_policy (keep = rdrate sim_run patmaxn patmax groupn _groupn visitn _visitn fitn fit dif_policy_:)
           out  = results.&scenario._mmrm3_dif_part&part.;
-  by rdrate sim_run fitn fit visitn;
+  by rdrate sim_run patmaxn patmax fitn fit visitn;
 run;
 
 

@@ -28,9 +28,50 @@
 *** READ IN DATA                                                 ***;
 ********************************************************************;
 
-data ds;
-  set data.&scenario.;
-  where sim_run le 10000;
+data ds_wide;
+  set data.&scenario._data;
+  where sim_run le 5000;
+run;
+
+********************************************************************;
+*** CREATE LONG FORMAT DATA                                      ***;
+********************************************************************;
+
+data ds_long;
+  set ds_wide;
+  by rdrate sim_run;
+  
+  array yf[5] yf1-yf5;  *** ARRAY TO HOLD FULL RESPONSES ***;
+
+  array y[5] y1-y5;     *** ARRAY TO HOLD RESPONSES ***;
+  array d[5] d1-d5;     *** ARRAY TO HOLD DISCONTINUATION INDICATORS ***;
+  array p[5] p1-p5;     *** ARRAY TO HOLD PATTERNS AT EACH VISIT ***;
+  array w[5] w1-w5;     *** ARRAY TO HOLD WITHDRAWAL INDICATORS ***;
+  
+  array disc_code[5] disc1-disc5;     
+  array pat_code[5] pat1-pat5;
+
+  do j = 1 to 5;
+    visitn        = j;
+    response_full = yf[j];
+    response      = y[j];
+    disc          = d[j];
+    pattern       = p[j];
+    with          = w[j];
+    disccode      = disc_code[j];
+    patcode       = pat_code[j];
+    if response_full ne . then change_full = response_full - baseline_var;
+    else change_full = .;
+    if response ne . then change = response - baseline_var;
+    else change = .;
+    output;
+  end;
+
+  keep rdrate sim_run subjid groupn group visitn patmaxn patmax
+       baseline_var response_full response change_full change 
+       disc disccode disctime pattern patcode with withtime 
+       p_i1-p_i5 d_i1-d_i5 e_i1-e_i5;
+
 run;
 
 
@@ -39,7 +80,7 @@ run;
 ********************************************************************;
 
 %ods_off();
-proc mixed data = ds noclprint;
+proc mixed data = ds_long noclprint;
   by rdrate sim_run;
   class groupn visitn subjid;
   model change_full = groupn*visitn baseline_var*visitn / noint;
@@ -59,6 +100,7 @@ data results.&scenario._full_lsm;
   set lsm;
   lsm_policy_est   = estimate;
   lsm_policy_se    = stderr;
+  lsm_policy_var   = stderr**2;
   lsm_policy_lower = lower;
   lsm_policy_upper = upper;
   keep rdrate sim_run groupn visitn lsm_policy_:;
@@ -68,6 +110,7 @@ data results.&scenario._full_dif;
   set dif;
   dif_policy_est   = estimate;
   dif_policy_se    = stderr;
+  dif_policy_var   = stderr**2;
   dif_policy_lower = lower;
   dif_policy_upper = upper;
   keep rdrate sim_run groupn _groupn visitn _visitn dif_policy_:;
